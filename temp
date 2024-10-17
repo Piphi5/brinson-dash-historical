@@ -1,0 +1,4 @@
+ Disarm:
+ {
+ Compare: Position.AscentRate < -15, 3
+ } 
