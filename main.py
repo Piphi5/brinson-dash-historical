@@ -9,8 +9,8 @@ from AltAzRange import AltAzimuthRange
 st.set_page_config(page_title="Dashboard", layout="wide")
 
 # location constants
-gs_lat = 34.1391719
-gs_lon = -118.12713268
+gs_lat = 34.6891816
+gs_lon = -117.6730863
 gs_elev = 235.70712838
 
 AltAzimuthRange.default_observer(gs_lat, gs_lon, gs_elev)
@@ -132,16 +132,30 @@ def fetch_data_refresh(aprs_params):
         st.session_state.wait_time *= 2
         return None
 
+import pandas as pd
+from datetime import datetime, timedelta
+
+def temp_filter(df, hours=2, timestamp_col='time'):
+    # Ensure the timestamp column is in datetime format
+    # df[timestamp_col] = pd.to_datetime(df[timestamp_col])
+    
+    # Calculate the cutoff time for one hour ago
+    valid_range = datetime.now() - timedelta(hours=hours)
+    
+    # Filter the DataFrame
+    filtered_df = df[pd.to_datetime(df[timestamp_col]) >= valid_range]
+    
+    return filtered_df
+
 def display_dash(df):
     col1, col2, col3 = st.columns([1, 3.5, 2.5])
-    light_aprs_df = df[df['type'] == 'Light APRS']
     balloon_track.target(df['latitude'].iloc[-1], df['longitude'].iloc[-1], df['altitude'].iloc[-1])
 
     pointing_data = balloon_track.calculate()
     with col1:
         # Top: Two side-by-side text displays
-        st.metric("Voltage", f"{light_aprs_df['voltage'].iloc[-1]:.2f} V")
-        st.metric("Altitude", f"{light_aprs_df['altitude'].iloc[-1]:.2f} m")
+        st.metric("Voltage", f"{df['voltage'].iloc[-1]:.2f} V")
+        st.metric("Altitude", f"{df['altitude'].iloc[-1]:.2f} m")
         st.metric("Temperature", f"{df['temperature'].iloc[-1]:.2f} C")
         st.metric("Speed", f"{df['speed'].iloc[-1]:.2f} km/h")
         st.metric("Azimuth", f"{pointing_data['azimuth']:.2f} °")
@@ -172,7 +186,8 @@ def display_dash(df):
         st.subheader("Map")
         # Use Streamlit's built-in map function to show the last known location
         st.map(df[['latitude', 'longitude']], size=20)
-
+import os.path
+filename = "Historical.csv"
 try:
     # Create DataFrame for plotting
     light_aprs_data = fetch_data_refresh(light_aprs_params)
@@ -182,7 +197,25 @@ try:
     if process_eagle_aprs:
         process_eagle_aprs(eagle_aprs_data)
     df = pd.DataFrame(st.session_state.data).drop_duplicates()
-    display_dash(df)
+    # TODO ADD temporal filter
+    if os.path.isfile(filename):
+        old_df = pd.read_csv(filename)
+        new_df = pd.concat([old_df, df]).drop_duplicates().reset_index(drop=True)
+    else:
+        new_df = df
+    
+    
+    new_df.to_csv("Historical.csv")
+
+    historical = st.checkbox("Use Historical")
+    if historical:
+        display_dash(new_df)
+    else:
+        filtered_df = temp_filter(new_df)
+        if not filtered_df.empty:
+            display_dash(filtered_df)
+        else:
+            st.text("No current data found. Try using historical.")
 except Exception as e:
     print(e)
 
