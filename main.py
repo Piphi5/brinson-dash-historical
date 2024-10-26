@@ -4,14 +4,15 @@ import pandas as pd
 import time
 import plotly.express as px
 from datetime import datetime
+import numpy as np
 from AltAzRange import AltAzimuthRange
 
 st.set_page_config(page_title="Dashboard", layout="wide")
 
 # location constants
-gs_lat = 34.6891816
-gs_lon = -117.6730863
-gs_elev = 235.70712838
+gs_lat = 34.1385158
+gs_lon = -118.1272493
+gs_elev = 235
 
 AltAzimuthRange.default_observer(gs_lat, gs_lon, gs_elev)
 balloon_track = AltAzimuthRange()
@@ -147,17 +148,40 @@ def temp_filter(df, hours=2, timestamp_col='time'):
     
     return filtered_df
 
+battery_bounds = 6
+
+def get_metric_delta(df, column):
+    df_cleaned =  df.dropna(subset=[column])
+    prev_type = df_cleaned['type'].iloc[-1]
+    filt_df = df_cleaned[df_cleaned['type'] == prev_type]
+    if not filt_df.empty:
+        datapoint = filt_df[column].iloc[-1]
+        if len(filt_df) > 1:
+        
+            prev_datapoint = filt_df[column].iloc[-2]
+        else:
+            prev_datapoint = datapoint
+        return datapoint, datapoint - prev_datapoint
+    else:
+        return None, 0.0
 def display_dash(df):
+    print(df)
     col1, col2, col3 = st.columns([1, 3.5, 2.5])
     balloon_track.target(df['latitude'].iloc[-1], df['longitude'].iloc[-1], df['altitude'].iloc[-1])
 
     pointing_data = balloon_track.calculate()
     with col1:
         # Top: Two side-by-side text displays
-        st.metric("Voltage", f"{df['voltage'].iloc[-1]:.2f} V")
-        st.metric("Altitude", f"{df['altitude'].iloc[-1]:.2f} m")
-        st.metric("Temperature", f"{df['temperature'].iloc[-1]:.2f} C")
-        st.metric("Speed", f"{df['speed'].iloc[-1]:.2f} km/h")
+        voltage, v_delta = get_metric_delta(df, 'voltage')
+        st.metric("Voltage", f"{voltage:.2f} V", delta=v_delta)
+        # st.progress(voltage / battery_bounds * 100, text="Batt Percentage")
+        altitude, a_delta = get_metric_delta(df, 'altitude')
+        st.metric("Altitude", f"{altitude:.2f} m", delta=a_delta)
+        # st.progress(altitude / 20000 * 100, text="Percent of max altitude")
+        temperature, t_delta = get_metric_delta(df, 'temperature')
+        st.metric("Temperature", f"{temperature:.2f} °C", delta=t_delta)
+        speed, s_delta = get_metric_delta(df, 'temperature')
+        st.metric("Speed", f"{speed:.2f} km/h", delta=s_delta)
         st.metric("Azimuth", f"{pointing_data['azimuth']:.2f} °")
         st.metric("Elevation Angle", f"{pointing_data['elevation']:.2f} °")
         st.metric("Distance", f"{pointing_data['distance']:.2f} m")
@@ -165,27 +189,30 @@ def display_dash(df):
     # -------------------- Middle Column --------------------
     with col2:
         with st.expander("Voltage Plot"):
-            voltage_chart = px.line(df, x='time', y='voltage', title="Voltage (V) over Time", color='type')
+            voltage_chart = px.line(df, x='time', y='voltage', title="Voltage (V) over Time", color="type", markers=True)
+            # voltage_chart.update_traces(fill='tozeroy', fillcolor="rgba(173, 216, 230, 0.3)")  # Light blue gradient with some transparency
+
             st.plotly_chart(voltage_chart)
         with st.expander("Temperature Plot"):
-            temp_chart = px.line(df, x='time', y='temperature', title="Temperature (C) over Time", color='type')
+            temp_chart = px.line(df, x='time', y='temperature', title="Temperature (C) over Time", color='type', markers=True)
             st.plotly_chart(temp_chart)
         with st.expander("Altitude Plot"):
-            alt_chart = px.line(df, x='time', y='altitude', title="Altitude (m) over Time", color='type')
+            alt_chart = px.line(df, x='time', y='altitude', title="Altitude (m) over Time", color='type', markers=True)
             st.plotly_chart(alt_chart)
         with st.expander("Pressure Plot"):
-            press_chart = px.line(df, x='time', y='pressure', title="Pressure (hPa) over Time", color='type')
+            press_chart = px.line(df, x='time', y='pressure', title="Pressure (hPa) over Time", color='type', markers=True)
             st.plotly_chart(press_chart)
         with st.expander("Pressure Temperature Plot"):
-            press_temp_chart = px.line(df, x='temperature', y='pressure', title="Pressure over Temperature", color='type')
+            press_temp_chart = px.line(df, x='temperature', y='pressure', title="Pressure over Temperature", color='type', markers=True)
             st.plotly_chart(press_temp_chart)
         
-
+    color_mapper = np.vectorize(lambda x: "#ADD8E6" if x == "Light APRS" else "#FF474C")
+    df["map_color"] = color_mapper(df["type"].to_numpy())
     # -------------------- Right Column --------------------
     with col3:
         st.subheader("Map")
         # Use Streamlit's built-in map function to show the last known location
-        st.map(df[['latitude', 'longitude']], size=20)
+        st.map(df, latitude='latitude', longitude='longitude', color='map_color', size=20)
 import os.path
 filename = "Historical.csv"
 try:
@@ -197,7 +224,6 @@ try:
     if process_eagle_aprs:
         process_eagle_aprs(eagle_aprs_data)
     df = pd.DataFrame(st.session_state.data).drop_duplicates()
-    # TODO ADD temporal filter
     if os.path.isfile(filename):
         old_df = pd.read_csv(filename)
         new_df = pd.concat([old_df, df]).drop_duplicates().reset_index(drop=True)
