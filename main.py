@@ -205,7 +205,7 @@ try:
         new_df = df
     
     
-    new_df.to_csv("Historical.csv")
+    new_df.to_csv("Historical.csv", index=False)
 
     historical = st.checkbox("Use Historical")
     if historical:
