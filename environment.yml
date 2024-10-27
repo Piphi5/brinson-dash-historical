@@ -6,4 +6,6 @@ dependencies:
   - plotly
   - pip:
       - AltAzRange
+      - folium
+      - streamlit-folium
 prefix: C:\Users\piphi\anaconda3\envs\brinson-dash

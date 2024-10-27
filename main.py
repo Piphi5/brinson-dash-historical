@@ -6,6 +6,7 @@ import plotly.express as px
 from datetime import datetime
 import numpy as np
 from AltAzRange import AltAzimuthRange
+from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="Dashboard", layout="wide")
 
@@ -164,9 +165,55 @@ def get_metric_delta(df, column):
         return datapoint, datapoint - prev_datapoint
     else:
         return None, 0.0
+
+import folium
+from streamlit_folium import st_folium
+def plot_map(df):
+    polygon_points = [
+        (34.353851, -118.170281), (34.658468, -117.967722), (34.812067, -117.350069), 
+        (34.85, -117.116594), (34.5, -117.116594), (34.43851, -117.398520)
+    ]
+
+    light_aprs_traj_mask = df['type'] == "Light APRS"
+    eagle_mask = ~light_aprs_traj_mask
+
+    light_aprs_df = df[light_aprs_traj_mask]
+    eagle_df = df[eagle_mask]
+
+    light_aprs_traj_points = list(zip(light_aprs_df['latitude'], light_aprs_df['longitude']))
+    eagle_traj_points = list(zip(eagle_df['latitude'], eagle_df['longitude']))
+
+    center_lat = (light_aprs_traj_points[-1][0] + eagle_traj_points[-1][0]) / 2
+    center_lon = (light_aprs_traj_points[-1][1] + eagle_traj_points[-1][1]) / 2
+    print(center_lat, center_lon)
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+
+    
+    weight = 8
+    folium.PolyLine(light_aprs_traj_points, color='blue', weight=weight, opacity=1, popup="light aprs").add_to(m)
+    folium.PolyLine(eagle_traj_points, color='blue', weight=weight, opacity=1, popup="light aprs").add_to(m)
+
+
+    style1 = {'fillColor': '#FFA500', 'color': '#FFA500'}
+    style2 = {'fillColor': '#FF0000', 'color': '#FF0000'}
+    style3 = {'fillColor': '#FF00FF', 'color': '#FF00FF'}
+
+    uas_file = "filtered_FAA_UAS_FacilityMap_Data.geojson"
+    special_zones_file = "filtered_Special_Use_Airspace.geojson"
+    urban_areas = "filtered_Adjusted_Urban_Area.geojson"
+
+    polygon_coordinates = [[lat, lon] for lat, lon in polygon_points]  # Ensure correct lat-lon order
+    folium.Polygon(locations=polygon_coordinates, color='green', fill=True, fill_opacity=0.2).add_to(m)
+
+    # folium.GeoJson(uas_file, style_function=lambda x:style1).add_to(m)
+    folium.GeoJson(special_zones_file, style_function=lambda x:style2).add_to(m)
+    folium.GeoJson(urban_areas, style_function=lambda x:style3).add_to(m)
+    folium.LayerControl().add_to(m)
+    return m
+
 def display_dash(df):
     print(df)
-    col1, col2, col3 = st.columns([1, 3.5, 2.5])
+    col1, col2, col3 = st.columns([1.5, 4, 2.5])
     balloon_track.target(df['latitude'].iloc[-1], df['longitude'].iloc[-1], df['altitude'].iloc[-1])
 
     pointing_data = balloon_track.calculate()
@@ -188,31 +235,67 @@ def display_dash(df):
 
     # -------------------- Middle Column --------------------
     with col2:
-        with st.expander("Voltage Plot"):
-            voltage_chart = px.line(df, x='time', y='voltage', title="Voltage (V) over Time", color="type", markers=True)
-            # voltage_chart.update_traces(fill='tozeroy', fillcolor="rgba(173, 216, 230, 0.3)")  # Light blue gradient with some transparency
+        fig = make_subplots(
+                rows=2, cols=2,
+                shared_xaxes=False,
+                # vertical_spacing=0.03,
+                subplot_titles=("Voltage (V) over Time", "Altitude (m) over time", "Temperature (°C) over time",  "Pressure (hPa) over Temperature (°C)")
+            )
+        voltage_chart = px.line(df, x='time', y='voltage', title="Voltage (V) over Time", color="type", markers=True)
+        temp_chart = px.line(df, x='time', y='temperature', title="Temperature (C) over Time", color='type', markers=True)
+        alt_chart = px.line(df, x='time', y='altitude', title="Altitude (m) over Time", color='type', markers=True)
+        press_temp_chart = px.line(df, x='temperature', y='pressure', title="Pressure over Temperature", color='type', markers=True)
 
-            st.plotly_chart(voltage_chart)
-        with st.expander("Temperature Plot"):
-            temp_chart = px.line(df, x='time', y='temperature', title="Temperature (C) over Time", color='type', markers=True)
-            st.plotly_chart(temp_chart)
-        with st.expander("Altitude Plot"):
-            alt_chart = px.line(df, x='time', y='altitude', title="Altitude (m) over Time", color='type', markers=True)
-            st.plotly_chart(alt_chart)
-        with st.expander("Pressure Plot"):
-            press_chart = px.line(df, x='time', y='pressure', title="Pressure (hPa) over Time", color='type', markers=True)
-            st.plotly_chart(press_chart)
-        with st.expander("Pressure Temperature Plot"):
-            press_temp_chart = px.line(df, x='temperature', y='pressure', title="Pressure over Temperature", color='type', markers=True)
-            st.plotly_chart(press_temp_chart)
+        for trace in voltage_chart['data']:
+            fig.add_trace(trace.update(showlegend=False), row=1, col=1)
+        for trace in temp_chart['data']:
+            fig.add_trace(trace.update(showlegend=False), row=2, col=1)
+        for trace in alt_chart['data']:
+            fig.add_trace(trace.update(showlegend=False), row=1, col=2)
+        for trace in press_temp_chart['data']:
+            fig.add_trace(trace, row=2, col=2)
+        # fig.add_trace(temp_chart, row=2, col=1)
+        # fig.add_trace(alt_chart, row=1, col=2)
+        # fig.add_trace(press_temp_chart, row=2, col=2)
+
+        fig.update_layout(
+            height=750,  # Adjust the height as needed
+            width=800,   # Optionally adjust width
+            title_text="Balloon Status Plots"
+        )
+        st.plotly_chart(fig)
+
         
-    color_mapper = np.vectorize(lambda x: "#ADD8E6" if x == "Light APRS" else "#FF474C")
+
+        # with st.expander("Voltage Plot"):
+        #     voltage_chart = px.line(df, x='time', y='voltage', title="Voltage (V) over Time", color="type", markers=True)
+        #     # voltage_chart.update_traces(fill='tozeroy', fillcolor="rgba(173, 216, 230, 0.3)")  # Light blue gradient with some transparency
+
+        #     st.plotly_chart(voltage_chart)
+        # with st.expander("Temperature Plot"):
+        #     temp_chart = px.line(df, x='time', y='temperature', title="Temperature (C) over Time", color='type', markers=True)
+        #     st.plotly_chart(temp_chart)
+        # with st.expander("Altitude Plot"):
+        #     alt_chart = px.line(df, x='time', y='altitude', title="Altitude (m) over Time", color='type', markers=True)
+        #     st.plotly_chart(alt_chart)
+        # with st.expander("Pressure Plot"):
+        #     press_chart = px.line(df, x='time', y='pressure', title="Pressure (hPa) over Time", color='type', markers=True)
+        #     st.plotly_chart(press_chart)
+        # with st.expander("Pressure Temperature Plot"):
+        #     press_temp_chart = px.line(df, x='temperature', y='pressure', title="Pressure over Temperature", color='type', markers=True)
+        #     st.plotly_chart(press_temp_chart)
+        
+    color_mapper = np.vectorize(lambda x: "#ADD8E6" if x == "Light APRS" else "#00008B")
     df["map_color"] = color_mapper(df["type"].to_numpy())
     # -------------------- Right Column --------------------
     with col3:
         st.subheader("Map")
         # Use Streamlit's built-in map function to show the last known location
-        st.map(df, latitude='latitude', longitude='longitude', color='map_color', size=20)
+        # st.map(df, latitude='latitude', longitude='longitude', color='map_color', size=20)
+        m = plot_map(df)
+        st_folium(m, returned_objects=[])
+
+
 import os.path
 filename = "Historical.csv"
 try:
@@ -245,6 +328,7 @@ try:
 except Exception as e:
     print(e)
 
+print(st.session_state.wait_time)
 time.sleep(st.session_state.wait_time)
 st.rerun()
 
