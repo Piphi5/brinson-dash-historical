@@ -162,7 +162,7 @@ def get_metric_delta(df, column):
             prev_datapoint = filt_df[column].iloc[-2]
         else:
             prev_datapoint = datapoint
-        return datapoint, datapoint - prev_datapoint
+        return datapoint, round(datapoint - prev_datapoint, 2)
     else:
         return None, 0.0
 
@@ -183,15 +183,28 @@ def plot_map(df):
     light_aprs_traj_points = list(zip(light_aprs_df['latitude'], light_aprs_df['longitude']))
     eagle_traj_points = list(zip(eagle_df['latitude'], eagle_df['longitude']))
 
-    center_lat = (light_aprs_traj_points[-1][0] + eagle_traj_points[-1][0]) / 2
-    center_lon = (light_aprs_traj_points[-1][1] + eagle_traj_points[-1][1]) / 2
+    if light_aprs_df.empty:
+        center_lat = np.mean(eagle_df['latitude'])
+        center_lon = (np.mean(eagle_df['longitude'])) 
+    elif eagle_df.empty:
+        center_lat = (np.mean(light_aprs_df['latitude']))
+        center_lon = (np.mean(light_aprs_df['longitude']))
+    else:
+
+        center_lat = (np.mean(light_aprs_df['latitude']) + np.mean(eagle_df['latitude'])) / 2
+        center_lon = (np.mean(light_aprs_df['longitude']) + np.mean(eagle_df['longitude'])) / 2
+    print("CENTER LAT AND LON")
     print(center_lat, center_lon)
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+    print(light_aprs_traj_points)
+    print(eagle_traj_points)
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=11)
 
     
     weight = 8
-    folium.PolyLine(light_aprs_traj_points, color='blue', weight=weight, opacity=1, popup="light aprs").add_to(m)
-    folium.PolyLine(eagle_traj_points, color='blue', weight=weight, opacity=1, popup="light aprs").add_to(m)
+    if light_aprs_traj_points:
+        folium.PolyLine(light_aprs_traj_points, color='lightblue', weight=weight, opacity=1, popup="light aprs").add_to(m)
+    if eagle_traj_points:
+        folium.PolyLine(eagle_traj_points, color='blue', weight=weight, opacity=1, popup="eagle").add_to(m)
 
 
     style1 = {'fillColor': '#FFA500', 'color': '#FFA500'}
