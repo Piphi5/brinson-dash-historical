@@ -149,6 +149,15 @@ def temp_filter(df, hours=2, timestamp_col='time'):
     
     return filtered_df
 
+def total_temp_filter(df, hours=2, timestamp_col='time'):
+        # Calculate the cutoff time for one hour ago
+    valid_range = np.max(pd.to_datetime(df[timestamp_col])) - timedelta(hours=hours)
+
+    # Filter the DataFrame
+    filtered_df = df[pd.to_datetime(df[timestamp_col]) >= valid_range]
+    
+    return filtered_df
+
 battery_bounds = 6
 
 def get_metric_delta(df, column):
@@ -328,10 +337,13 @@ try:
     
     
     new_df.to_csv("Historical.csv", index=False)
+    new_df['ts'] = pd.to_datetime(new_df['time'])
+    new_df = new_df.sort_values("ts")
 
     historical = st.checkbox("Use Historical")
     if historical:
-        display_dash(new_df)
+        filtered_df = total_temp_filter(new_df)
+        display_dash(filtered_df)
     else:
         filtered_df = temp_filter(new_df)
         if not filtered_df.empty:
