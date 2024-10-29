@@ -197,7 +197,7 @@ filename = "Historical.csv"
 
 df = pd.read_csv("Flight.CSV")
 df['ts'] = pd.to_datetime(df['DateTime'])
-now = datetime.now().replace(day=17)+ datetime.timedelta(hours=1)
+now = datetime.now().replace(day=17)+ timedelta(hours=1)
 filtered_df = df[df['ts'] < now]
 
 if filtered_df.empty:
